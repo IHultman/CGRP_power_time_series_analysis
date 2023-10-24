@@ -75,15 +75,15 @@ for fx = 1:n_files
         region_power_means.mouse, ...
         region_power_means.freq_band);
 
-      if iscolumn(reg_grp_ixs)
+      if isrow(reg_grp_ixs)
         reg_grp_ixs = reg_grp_ixs'; 
       end
 
-      if iscolumn(mouse_id)
+      if isrow(mouse_id)
         mouse_id = mouse_id';
       end
       
-      if iscolumn(freq_band)
+      if isrow(freq_band)
         freq_band = freq_band';
       end
 
@@ -92,14 +92,21 @@ for fx = 1:n_files
         table2array(region_power_means(:,pow_col_ixs) ), ...
         reg_grp_ixs);
     
-      mouse_labels = repmat(mouse_id, n_power);
-      freq_labels = repmat(freq_band, n_power);
+      mouse_labels = repmat(mouse_id, 1, n_power);
+      freq_labels = repmat(freq_band, 1, n_power);
+      time_labels = repmat(1:n_power, size(group_mean_ts, 1), 1);
+      
+      assert(all(size(group_mean_ts) == size(mouse_labels) ));
+      assert(all(size(group_mean_ts) == size(freq_labels) ));
+      assert(all(size(group_mean_ts) == size(time_labels) ));
       
       power_ts_table = table( ...
         reshape(group_mean_ts', [], 1), ...
         reshape(mouse_labels', [], 1), ...
         reshape(freq_labels', [], 1), ...
-        'VariableNames', [{'y'}, {'mouse'}, {'freq_band'}]);
+        reshape(time_labels', [], 1), ...
+        'VariableNames', ...
+        [{'y'}, {'mouse'}, {'freq_band'}, {'time'}]);
     end
   end
 end
