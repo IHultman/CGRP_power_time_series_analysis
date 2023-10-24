@@ -13,7 +13,7 @@ data_files = split(ls(data_dir) );
 data_files = data_files(1:(end-1) );
 n_files = length(data_files);
 
-exp_phases = {'Baseline', 'PI2'};
+exp_phases = {'Baseline', 'Post_Injection', 'PI2'};
 n_phases = length(exp_phases);
 
 brain_regions = { ...
@@ -48,13 +48,13 @@ for fx = 1:n_files
       intersect( ...
         next_tabl_colnames, ...
         expected_nonpower_colnames) );
-  
+
     pow_col_ixs = setdiff( ...
       1:size(next_power_means.(next_phase), 2), ...
       nonpow_col_ixs);
-  
+
     n_power = length(pow_col_ixs);
-  
+
     % Make sure we've identified the columns corresponding to the mean
     % log-power time series.
     assert( ...
@@ -82,7 +82,7 @@ for fx = 1:n_files
       if isrow(mouse_id)
         mouse_id = mouse_id';
       end
-      
+
       if isrow(freq_band)
         freq_band = freq_band';
       end
@@ -91,22 +91,25 @@ for fx = 1:n_files
         @(reg_pow_mat) mean(reg_pow_mat, 1), ...
         table2array(region_power_means(:,pow_col_ixs) ), ...
         reg_grp_ixs);
-    
+
       mouse_labels = repmat(mouse_id, 1, n_power);
       freq_labels = repmat(freq_band, 1, n_power);
+      phase_labels = repelem(next_phase, size(group_mean_ts) );
       time_labels = repmat(1:n_power, size(group_mean_ts, 1), 1);
-      
+
       assert(all(size(group_mean_ts) == size(mouse_labels) ));
       assert(all(size(group_mean_ts) == size(freq_labels) ));
+      assert(all(size(group_mean_ts) == size(phase_labels) ));
       assert(all(size(group_mean_ts) == size(time_labels) ));
-      
+
       power_ts_table = table( ...
         reshape(group_mean_ts', [], 1), ...
         reshape(mouse_labels', [], 1), ...
         reshape(freq_labels', [], 1), ...
+        reshape(phase_labels', [], 1), ...
         reshape(time_labels', [], 1), ...
         'VariableNames', ...
-        [{'y'}, {'mouse'}, {'freq_band'}, {'time'}]);
+        [{'y'}, {'mouse'}, {'freq_band'}, {'phase'}, {'time'}]);
     end
   end
 end
