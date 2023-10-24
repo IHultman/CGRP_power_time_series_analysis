@@ -111,7 +111,9 @@ for fx = 1:n_files
       mouse_labels = repmat(mouse_id, 1, n_power);
       freq_labels = repmat(freq_band, 1, n_power);
       phase_labels = repelem({next_phase}, size(group_mean_ts, 1), n_power);
-      time_labels = repmat(1:n_power, size(group_mean_ts, 1), 1);
+      time_labels = repmat( ...
+        (1:n_power) + (phase_start_ixs(px) - 1), ...
+        size(group_mean_ts, 1), 1);
 
       assert(all(size(group_mean_ts) == size(mouse_labels) ));
       assert(all(size(group_mean_ts) == size(freq_labels) ));
@@ -138,7 +140,17 @@ for fx = 1:n_files
   end
   
   for rx = 1:n_regions
-    tmp_region_dfs.(brain_regions{rx}).day = fx;
+    next_region = brain_regions{rx};
+    n_obs = size(tmp_region_dfs.(next_region), 1);
+    tmp_region_dfs.(next_region).day = repelem(fx, n_obs, 1);
+    
+    if isempty(region_dfs.(next_region) )
+      region_dfs.(next_region) = tmp_region_dfs.(next_region); 
+    else
+      region_dfs.(next_region) = [ ...
+        region_dfs.(next_region); ...
+        tmp_region_dfs.(next_region)];
+    end
   end
 end
 
