@@ -13,8 +13,12 @@ data_files = split(ls(data_dir) );
 data_files = data_files(1:(end-1) );
 n_files = length(data_files);
 
-exp_phases = {'Baseline', 'Post_Injection', 'PI2'};
+exp_phases = {'Baseline', 'Post_injection', 'PI2'};
 n_phases = length(exp_phases);
+
+phase_start_ixs = [1, 1802, 3603];
+
+assert(length(phase_start_ixs) == n_phases);
 
 brain_regions = { ...
   'Acc', ...
@@ -37,9 +41,21 @@ expected_nonpower_colnames = [ ...
 
 power_colnames_prefix = 'Var';
 
+region_dfs = struct();
+
+for rx = 1:n_regions
+  region_dfs.(brain_regions{rx}) = [];
+end
+
 for fx = 1:n_files
   next_file = [data_dir, data_files{fx}];
   next_power_means = load(next_file);
+  
+  tmp_region_dfs = struct();
+
+  for rx = 1:n_regions
+    tmp_region_dfs.(brain_regions{rx}) = [];
+  end
 
   for px = 1:n_phases
     next_phase = exp_phases{px};
@@ -94,7 +110,7 @@ for fx = 1:n_files
 
       mouse_labels = repmat(mouse_id, 1, n_power);
       freq_labels = repmat(freq_band, 1, n_power);
-      phase_labels = repelem(next_phase, size(group_mean_ts) );
+      phase_labels = repelem({next_phase}, size(group_mean_ts, 1), n_power);
       time_labels = repmat(1:n_power, size(group_mean_ts, 1), 1);
 
       assert(all(size(group_mean_ts) == size(mouse_labels) ));
@@ -110,7 +126,19 @@ for fx = 1:n_files
         reshape(time_labels', [], 1), ...
         'VariableNames', ...
         [{'y'}, {'mouse'}, {'freq_band'}, {'phase'}, {'time'}]);
+    
+      if isempty(tmp_region_dfs.(next_region) )
+        tmp_region_dfs.(next_region) = power_ts_table;
+      else
+        tmp_region_dfs.(next_region) = [ ...
+          tmp_region_dfs.(next_region); ...
+          power_ts_table];
+      end
     end
+  end
+  
+  for rx = 1:n_regions
+    tmp_region_dfs.(brain_regions{rx}).day = fx;
   end
 end
 
