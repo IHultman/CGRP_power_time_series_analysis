@@ -83,6 +83,8 @@ for fx = 1:n_files
           power_colnames_prefix, ...
           '') )));
 
+    next_power_means.(next_phase)(pow_col_ixs)
+
     for rx = 1:n_regions
       next_region = brain_regions{rx};
       reg_ixs = logical(next_power_means.(next_phase).(next_region) );
@@ -104,7 +106,7 @@ for fx = 1:n_files
       end
 
       group_mean_ts = splitapply( ...
-        @(reg_pow_mat) mean(reg_pow_mat, 1, 'omitnan'), ...
+        @(reg_pow_mat) mean(reg_pow_mat, 1), ...
         table2array(region_power_means(:,pow_col_ixs) ), ...
         reg_grp_ixs);
 
