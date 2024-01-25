@@ -1,8 +1,6 @@
-library(dplyr)
 library(genlasso)
-library(ggplot2)
+#library(ggplot2)
 library(purrr)
-library(R.matlab)
 library(stringr)
 
 
@@ -11,9 +9,8 @@ library(stringr)
 ## table is saved.                                                               ##
 ###################################################################################
 mean_logpower_ts_filename = paste0(
-  "/home",
+  "/Users",
   "/ikhultman",
-  "/Desktop",
   "/power_time_series_analysis",
   "/CGRP_power_time_series_analysis",
   "/fused_lasso_analysis/",
@@ -25,9 +22,8 @@ mean_logpower_ts_filename = paste0(
 ## should be saved.                                                            ##
 #################################################################################
 save_dir = paste0(
-  "/home",
+  "/Users",
   "/ikhultman",
-  "/Desktop",
   "/power_time_series_analysis",
   "/CGRP_power_time_series_analysis",
   "/fused_lasso_analysis",
@@ -48,6 +44,12 @@ nonpow_col_ixs = which(
 stopifnot(length(nonpow_col_ixs) == length(expected_nonpow_colnames) );
 
 power_col_ixs = sort(setdiff(1:ncol(mean_logpower_ts_data), nonpow_col_ixs) );
+thinning_factor = 8;
+power_col_ixs = seq(
+  power_col_ixs[1],
+  power_col_ixs[length(power_col_ixs)],
+  thinning_factor);
+
 n_power_pts = length(power_col_ixs);
 
 # Construct the D penalty matrix for fused lasso regression.
@@ -79,12 +81,13 @@ for (rx in 1:n_regions) {
     X = diag(n_power_pts);
     X = t(matrix(rep(X, n_mice), n_power_pts) );
 
-    y = as.vector(t(as.matrix(next_reg_freq_data[,power_col_ixs]) ));
+    y_scaled = as.vector(scale(t(as.matrix(next_reg_freq_data[,power_col_ixs]) )));
+    #y = as.vector(t(as.matrix(next_reg_freq_data[,power_col_ixs]) ));
   }
 }
 
 
-fused_lasso_loocv = function(Y, X, D, lambda=NA, gamma=0) {
+fused_lasso_loocv = function(Y, X, D, log_lambdas=NA, gamma=0) {
 # DESCRIPTION:
 #   Leave-one-out cross-validation for fused lasso.
 #
@@ -106,38 +109,40 @@ fused_lasso_loocv = function(Y, X, D, lambda=NA, gamma=0) {
 # RETURN VALUE:
 #   Smallest MSE's and corresponding lambda values for each test.
 
-  n_freq = ncol(X);
-  n_mice = nrow(X) / n_freq;
+  p_dim = ncol(X);
+  n_dim = nrow(X) / p_dim;
 
-  tst_inds = matrix(1:(n_freq*n_mice), ncol=n_mice);
+  tst_inds = matrix(1:(p_dim*n_dim), ncol=n_dim);
   trn_inds = apply(
     tst_inds,
     MARGIN=2,
-    FUN=function(col) setdiff(1:(n_freq*n_mice), col) );
+    FUN=function(col) setdiff(1:(p_dim*n_dim), col) );
 
-  cat(sprintf("Fitting %d leave-one-out cross-validation models ...\n", n_mice) );
+  cat(sprintf("Fitting %d leave-one-out cross-validation models ...\n", n_dim) );
 
   mods_train = lapply(
-    as.list(1:n_mice),
-    FUN=function(mx) {
-      X_train = X[trn_inds[,mx],];
-      Y_train = Y[trn_inds[,mx]];
+    as.list(1:n_dim),
+    FUN=function(gx) {
+      X_train = X[trn_inds[,gx],];
+      Y_train = Y[trn_inds[,gx]];
       fusedlasso(Y_train, X_train, D, gamma=gamma)
     });
 
-  lambdas = lambda;
+  if (any(is.na(log_lambdas) )) {
+    n_lambdas = 100;
+    log_lam_min = 1e-6;
+    log_lam_max = log(
+      ceiling(
+        max(
+          unlist(
+            lapply(
+              mods_train,
+              FUN=function(mod) max(mod$lambda) )))));
 
-  if (any(is.na(lambda) )) {
-    lam_max = max(
-      unlist(
-        lapply(
-          mods_train,
-          FUN=function(mod) max(mod$lambda) )));
-
-    lambdas = seq(0, ceiling(lam_max), 0.01);
+    log_lambdas = seq(log_lam_min, log_lam_max, length.out=n_lambdas);
   }
 
-  n_lambdas = length(lambdas);
+  n_lambdas = length(log_lambdas);
 
   cat(
     sprintf(
@@ -145,15 +150,15 @@ fused_lasso_loocv = function(Y, X, D, lambda=NA, gamma=0) {
       n_lambdas) );
 
   loocv_results = data.frame(
-    lambda=lambdas,
+    log_lambda=log_lambdas,
     mean_mse=rep(NA, n_lambdas),
     sd_mse=rep(NA, n_lambdas) );
 
-  all_mse = matrix(NA, n_lambdas, n_mice);
+  all_mse = matrix(NA, n_lambdas, n_dim);
 
-  for (mx in 1:n_mice) {
+  for (mx in 1:n_dim) {
     next_mod_trn = mods_train[[mx]];
-    betas = coef(next_mod_trn, lambda=loocv_results$lambda)$beta;
+    betas = coef(next_mod_trn, lambda=exp(loocv_results$lambda) )$beta;
     X_test = X[tst_inds[,mx],];
     Y_test = Y[tst_inds[,mx]];
     Y_hat = X_test %*% betas;
