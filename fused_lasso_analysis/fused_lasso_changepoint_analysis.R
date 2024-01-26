@@ -44,7 +44,7 @@ nonpow_col_ixs = which(
 stopifnot(length(nonpow_col_ixs) == length(expected_nonpow_colnames) );
 
 power_col_ixs = sort(setdiff(1:ncol(mean_logpower_ts_data), nonpow_col_ixs) );
-thinning_factor = 8;
+thinning_factor = 16;
 power_col_ixs = seq(
   power_col_ixs[1],
   power_col_ixs[length(power_col_ixs)],
@@ -156,13 +156,13 @@ fused_lasso_loocv = function(Y, X, D, log_lambdas=NA, gamma=0) {
 
   all_mse = matrix(NA, n_lambdas, n_dim);
 
-  for (mx in 1:n_dim) {
-    next_mod_trn = mods_train[[mx]];
-    betas = coef(next_mod_trn, lambda=exp(loocv_results$lambda) )$beta;
-    X_test = X[tst_inds[,mx],];
-    Y_test = Y[tst_inds[,mx]];
+  for (gx in 1:n_dim) {
+    next_mod_trn = mods_train[[gx]];
+    betas = coef(next_mod_trn, lambda=exp(loocv_results$log_lambda) )$beta;
+    X_test = X[tst_inds[,gx],];
+    Y_test = Y[tst_inds[,gx]];
     Y_hat = X_test %*% betas;
-    all_mse[,mx] = colMeans((Y_test - Y_hat)^2);
+    all_mse[,gx] = colMeans((Y_test - Y_hat)^2);
   }
 
   loocv_results$mean_mse = rowMeans(all_mse);
@@ -173,7 +173,7 @@ fused_lasso_loocv = function(Y, X, D, log_lambdas=NA, gamma=0) {
 
 
 # Fused lasso parameters
-gamma = 0.5;
+gamma = 0;
 lambdas_1se = rep(NA, n_reg_pairs);
 lambdas_min = rep(NA, n_reg_pairs);
 
