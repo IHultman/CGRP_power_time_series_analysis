@@ -80,8 +80,50 @@ nonpow_col_ixs = which(
 
 stopifnot(length(nonpow_col_ixs) == length(expected_nonpow_colnames) );
 
+nonpower_info = mean_logpower_ts_data[,nonpow_col_ixs];
+n_obs = nrow(nonpower_info);
+
 power_col_ixs = sort(setdiff(1:ncol(mean_logpower_ts_data), nonpow_col_ixs) );
+logpower_mat_init = as.matrix(mean_logpower_ts_data[,power_col_ixs]);
 thinning_factor = 16;
+
+n_blocks = ceiling(length(power_col_ixs) / thinning_factor);
+block_sizes = rep(thinning_factor, n_blocks)
+n_remaining = length(power_col_ixs) %% thinning_factor;
+
+if (n_remaining > 0) {
+  block_sizes[n_blocks] = n_remaining;
+}
+
+block_ixs_table = rbind(
+  cumsum(c(1, block_sizes[1:(n_blocks-1)]) ),
+  cumsum(block_sizes) );
+
+logpower_mat = matrix(NA, n_obs, n_blocks);
+
+for (bx in 1:n_blocks) {
+  col_ax = block_ixs_table[1,bx];
+  col_bx = block_ixs_table[2,bx];
+  logpower_mat[,bx] = rowMeans(logpower_mat_init[,col_ax:col_bx], na.rm=TRUE);
+}
+
+n_remaining = ncol(logpower_mat) %% thinning_factor;
+
+if (n_remaining > 0) {
+  logpower_mat = cbind(
+    logpower_mat,
+    matrix(NA, n_obs, thinning_factor - n_remaining) );
+}
+
+n_power_pts = ncol(logpower_mat) / thinning_factor;
+logpower_arr = array(t(logpower_mat), dim=c(thinning_factor, n_power_pts, n_obs) );
+logpower_mat = apply(
+  logpower_arr,
+  MARGIN=c(2, 3),
+  FUN=function(nxt_block) mean(nxt_block, na.rm=TRUE) );
+
+mean_logpower_ts_data = cbind(nonpower_info, t(logpower_mat) );
+
 power_col_ixs = seq(
   power_col_ixs[1],
   power_col_ixs[length(power_col_ixs)],
