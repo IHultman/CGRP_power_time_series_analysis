@@ -66,11 +66,19 @@ if (!dir.exists(figures_fit_v_obs_dir) ) {
   stopifnot(dir.exists(figures_fit_v_obs_dir) );
 }
 
-dir.create(paste0(figures_fit_v_obs_dir, "lambda_1se") );
-stopifnot(dir.exists(paste0(figures_fit_v_obs_dir, "lambda_1se") ));
+lambda_1se_dir = paste0(figures_fit_v_obs_dir, "lambda_1se");
 
-dir.create(paste0(figures_fit_v_obs_dir, "lambda_min") );
-stopifnot(dir.exists(paste0(figures_fit_v_obs_dir, "lambda_min") ));
+if (!dir.exists(lambda_1se_dir) ) {
+  dir.create(lambda_1se_dir);
+  stopifnot(dir.exists(lambda_1se_dir) );
+}
+
+lambda_min_dir = paste0(figures_fit_v_obs_dir, "lambda_min");
+
+if (!dir.exists(lambda_min_dir) ) {
+  dir.create(lambda_min_dir);
+  stopifnot(dir.exists(lambda_min_dir) );
+}
 
 mean_logpower_ts_data = read.csv(mean_logpower_ts_filename, header=TRUE);
 
@@ -95,6 +103,8 @@ if (n_remaining > 0) {
   block_sizes[n_blocks] = n_remaining;
 }
 
+stopifnot(sum(block_sizes) == length(power_col_ixs) );
+
 block_ixs_table = rbind(
   cumsum(c(1, block_sizes[1:(n_blocks-1)]) ),
   cumsum(block_sizes) );
@@ -107,32 +117,33 @@ for (bx in 1:n_blocks) {
   logpower_mat[,bx] = rowMeans(logpower_mat_init[,col_ax:col_bx], na.rm=TRUE);
 }
 
-n_remaining = ncol(logpower_mat) %% thinning_factor;
+mean_logpower_ts_data = cbind(nonpower_info, logpower_mat);
+power_col_ixs = (1:n_blocks) + ncol(nonpower_info);
 
-if (n_remaining > 0) {
-  logpower_mat = cbind(
-    logpower_mat,
-    matrix(NA, n_obs, thinning_factor - n_remaining) );
-}
+#logpower_mat_test = logpower_mat_init;
 
-n_power_pts = ncol(logpower_mat) / thinning_factor;
-logpower_arr = array(t(logpower_mat), dim=c(thinning_factor, n_power_pts, n_obs) );
-logpower_mat = apply(
-  logpower_arr,
-  MARGIN=c(2, 3),
-  FUN=function(nxt_block) mean(nxt_block, na.rm=TRUE) );
+#if (n_remaining > 0) {
+#  logpower_mat_test = cbind(
+#    logpower_mat_test,
+#    matrix(NA, n_obs, thinning_factor - n_remaining) );
+#}
 
-mean_logpower_ts_data = cbind(nonpower_info, t(logpower_mat) );
+#n_power_pts = ncol(logpower_mat_test) / thinning_factor;
+#logpower_arr = array(t(logpower_mat_test), dim=c(thinning_factor, n_power_pts, n_obs) );
+#logpower_mat_test = apply(
+#  logpower_arr,
+#  MARGIN=c(2, 3),
+#  FUN=function(nxt_block) mean(nxt_block, na.rm=TRUE) );
 
-power_col_ixs = seq(
-  power_col_ixs[1],
-  power_col_ixs[length(power_col_ixs)],
-  thinning_factor);
+#stopifnot(mean((t(logpower_mat_test) - logpower_mat)^2) == 0);
 
-n_power_pts = length(power_col_ixs);
+#power_col_ixs = seq(
+#  power_col_ixs[1],
+#  power_col_ixs[length(power_col_ixs)],
+#  thinning_factor);
 
 # Construct the D penalty matrix for fused lasso regression.
-D = getDtf(n_power_pts, 0);
+D = getDtf(n_blocks, 0);
 
 # Plots background color.
 bg_color = rgb(245, 245, 245, maxColorValue=255);
@@ -141,8 +152,8 @@ n_reg_freq_combos = nrow(unique(mean_logpower_ts_data[,c("region", "freq_band")]
 
 # The fitted values at each frequency for each pair of brain regions will
 # be stored in the following table and saved to a CSV file.
-results_fitted_1se = as.data.frame(matrix(NA, n_power_pts, n_reg_freq_combos) );
-results_fitted_min = as.data.frame(matrix(NA, n_power_pts, n_reg_freq_combos) );
+results_fitted_1se = as.data.frame(matrix(NA, n_blocks, n_reg_freq_combos) );
+results_fitted_min = as.data.frame(matrix(NA, n_blocks, n_reg_freq_combos) );
 
 brain_regions = unique(mean_logpower_ts_data$region);
 n_regions = length(brain_regions);
@@ -255,8 +266,8 @@ for (rx in 1:n_regions) {
     stopifnot(nrow(next_reg_freq_data) == n_mice);
 
     # Construct the X design matrix for fused lasso regression.
-    X = diag(n_power_pts);
-    X = t(matrix(rep(X, n_mice), n_power_pts) );
+    X = diag(n_blocks);
+    X = t(matrix(rep(X, n_mice), n_blocks) );
 
     y_scaled_mat = scale(t(as.matrix(next_reg_freq_data[,power_col_ixs]) ));
     Y = as.vector(y_scaled_mat);
