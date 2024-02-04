@@ -160,27 +160,26 @@ n_regions = length(brain_regions);
 
 col_ix = 0;
 
-fused_lasso_loocv = function(Y, X, D, log_lambdas=NA, gamma=0) {
+fused_lasso_loocv = function(Y, X, D, log_lambdas, gamma) {
 # DESCRIPTION:
 #   Leave-one-out cross-validation for fused lasso.
 #
 # PARAMETERS:
-#        Y: Frequency response vector.
+#             Y: Response vector.
 #
-#        X: Design matrix for fused lasso.
+#             X: Design matrix for fused lasso.
 #
-#        D: Fused lasso penalty matrix.
+#             D: Fused lasso penalty matrix.
 #
-#   lambda: If lambda(s) is(are) provided, then that will be used for
-#           cross-validation tests; otherwise lambdas over the
-#           range from zero to the largest produced during training
-#           are tested in order to find which lambda value minimizes
-#           the average test MSE.
+#   log_lambdas: If log-lambda(s) is(are) provided, then that will be used for
+#                cross-validation tests; otherwise log-lambdas over the range from
+#                log(1e-6) to the largest produced during training are used.
 #
-#    gamma: Parameter used to penalize beta parameter estimates.
+#         gamma: Parameter used to penalize beta parameter estimates such that
+#                larger gamma values favor sparser models.
 #
 # RETURN VALUE:
-#   Smallest MSE's and corresponding lambda values for each test.
+#   LOOCV test MSE means, standard deviations and corresponding log-lambda values.
 
   p_dim = ncol(X);
   n_dim = nrow(X) / p_dim;
@@ -244,6 +243,94 @@ fused_lasso_loocv = function(Y, X, D, log_lambdas=NA, gamma=0) {
   loocv_results
 };
 
+
+fused_lasso_loocv_par = function(Y, X, D, log_lambdas, gamma, cl) {
+# DESCRIPTION:
+#   Leave-one-out cross-validation for fused lasso.
+#
+# PARAMETERS:
+#             Y: Response vector.
+#
+#             X: Design matrix for fused lasso.
+#
+#             D: Fused lasso penalty matrix.
+#
+#   log_lambdas: If log-lambda(s) is(are) provided, then that will be used for
+#                cross-validation tests; otherwise log-lambdas over the range from
+#                log(1e-6) to the largest produced during training are used.
+#
+#         gamma: Parameter used to penalize beta parameter estimates such that
+#                larger gamma values favor sparser models.
+#
+#            cl: Cluster object for parallel computation.
+#
+# RETURN VALUE:
+#   LOOCV test MSE means, standard deviations and corresponding log-lambda values.
+
+  p_dim = ncol(X);
+  n_dim = nrow(X) / p_dim;
+
+  tst_inds = matrix(1:(p_dim*n_dim), ncol=n_dim);
+  trn_inds = apply(
+    tst_inds,
+    MARGIN=2,
+    FUN=function(col) setdiff(1:(p_dim*n_dim), col) );
+
+  cat(sprintf("Fitting %d leave-one-out cross-validation models ...\n", n_dim) );
+
+  mods_train = parLapply(
+    cl,
+    as.list(1:n_dim),
+    FUN=function(gx) {
+      X_train = X[trn_inds[,gx],];
+      Y_train = Y[trn_inds[,gx]];
+      fusedlasso(Y_train, X_train, D, gamma=gamma)
+    });
+
+  if (any(is.na(log_lambdas) )) {
+    n_lambdas = 100;
+    log_lam_min = log(1e-6);
+    log_lam_max = log(
+      ceiling(
+        max(
+          unlist(
+            lapply(
+              mods_train,
+              FUN=function(mod) max(mod$lambda) )))));
+
+    log_lambdas = seq(log_lam_min, log_lam_max, length.out=n_lambdas);
+  }
+
+  n_lambdas = length(log_lambdas);
+
+  cat(
+    sprintf(
+      "Computing LOOCV test MSE's at %d different lambda values ...\n\n",
+      n_lambdas) );
+
+  loocv_results = data.frame(
+    log_lambda=log_lambdas,
+    mean_mse=rep(NA, n_lambdas),
+    sd_mse=rep(NA, n_lambdas) );
+
+  all_mse = matrix(NA, n_lambdas, n_dim);
+
+  for (gx in 1:n_dim) {
+    next_mod_trn = mods_train[[gx]];
+    betas = coef(next_mod_trn, lambda=exp(loocv_results$log_lambda) )$beta;
+    X_test = X[tst_inds[,gx],];
+    Y_test = Y[tst_inds[,gx]];
+    Y_hat = X_test %*% betas;
+    all_mse[,gx] = colMeans((Y_test - Y_hat)^2);
+  }
+
+  loocv_results$mean_mse = rowMeans(all_mse);
+  loocv_results$sd_mse = apply(all_mse, 1, sd);
+
+  loocv_results
+};
+
+
 for (rx in 1:n_regions) {
   next_region = brain_regions[rx];
   next_region_ixs = mean_logpower_ts_data$region == next_region;
@@ -272,8 +359,9 @@ for (rx in 1:n_regions) {
     y_scaled_mat = scale(t(as.matrix(next_reg_freq_data[,power_col_ixs]) ));
     Y = as.vector(y_scaled_mat);
 
-    loocv_results = fused_lasso_loocv(Y, X, D);
-    
+    gamma = 0;
+    loocv_results = fused_lasso_loocv(Y, X, D, NA, gamma);
+
     min_tst_mse = min(loocv_results$mean_mse);
     min_mse_ix = max(which(loocv_results$mean_mse == min_tst_mse) );
     tst_mse_1se = min_tst_mse + ((loocv_results$sd_mse[min_mse_ix] / sqrt(n_mice) ) * c(-1, 1) );
@@ -304,13 +392,13 @@ for (rx in 1:n_regions) {
         aes(
           x=log_lambda,
           y=mean_mse,
-          colour="mean test MSE"),
+          colour="Mean Test MSE"),
         linewidth=1) +
       geom_vline(
         data=plot_df2,
         aes(
           xintercept=log_lambda_min,
-          colour="log(lambda_min)"),
+          colour="Log(lambda_min)"),
         linetype="dotted",
         linewidth=0.7,
         show.legend=FALSE) +
@@ -318,7 +406,7 @@ for (rx in 1:n_regions) {
         data=plot_df2,
         aes(
           xintercept=log_lambda_1se,
-          colour="log(lambda_1se)"),
+          colour="Log(lambda_1se)"),
         linetype="dashed",
         linewidth=0.7,
         show.legend=FALSE) +
@@ -329,7 +417,7 @@ for (rx in 1:n_regions) {
           y=min_tst_mse,
           ymin=mse_1se_lower,
           ymax=mse_1se_upper,
-          colour="1 std. error"),
+          colour="1 Std. Error"),
         alpha=0.2,
         show.legend=FALSE) +
       scale_colour_manual(
@@ -341,8 +429,8 @@ for (rx in 1:n_regions) {
             linetype=c("solid", "dashed", "dotted", "solid"),
             linewidth=c(6, 0.7, 0.7, 1) ))) +
       labs(
-        x="log(lambda)",
-        y="mean test MSE") );
+        x="Log(lambda)",
+        y="Mean Test MSE") );
 
     save_filename = paste0(
       figures_lam_choice_dir,
@@ -387,6 +475,7 @@ for (rx in 1:n_regions) {
     png(filename=save_filename);
 
     plot(
+      (1:n_blocks) * thinning_factor,
       as.numeric(rowMeans(y_scaled_mat) ),
       lty=2,
       col="black",
@@ -395,14 +484,14 @@ for (rx in 1:n_regions) {
         " - frequency band ",
         next_freq_band),
       ylab="Scaled Log-power",
-      xlab="Time",
+      xlab="Time (seconds)",
       type="l",
       ylim=c(-1, 1) );
 
     lines(results_fitted_1se[[col_ix]], col="steelblue", lwd=3);
     legend(
-      34, 3,
-      legend=c("Mean Observed Data", "Fitted Values"),
+      0.75 * n_blocks * thinning_factor, 1,
+      legend=c("Mean Observed", "Fitted"),
       col=c("black", "steelblue"),
       lty=c(2, 1),
       lwd=c(1, 3) );
@@ -429,6 +518,7 @@ for (rx in 1:n_regions) {
     png(filename=save_filename);
 
     plot(
+      (1:n_blocks) * thinning_factor,
       as.numeric(rowMeans(y_scaled_mat) ),
       lty=2,
       col="black",
@@ -437,14 +527,14 @@ for (rx in 1:n_regions) {
         " - frequency band ",
         next_freq_band),
       ylab="Scaled Log-power",
-      xlab="Time",
+      xlab="Time (seconds)",
       type="l",
       ylim=c(-1, 1) );
 
     lines(results_fitted_min[[col_ix]], col="steelblue", lwd=3);
     legend(
-      34, 3,
-      legend=c("Mean Observed Data", "Fitted Values"),
+      0.75 * n_blocks * thinning_factor, 1,
+      legend=c("Mean Observed", "Fitted"),
       col=c("black", "steelblue"),
       lty=c(2, 1),
       lwd=c(1, 3) );
