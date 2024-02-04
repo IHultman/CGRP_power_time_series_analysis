@@ -447,7 +447,7 @@ for (rx in 1:n_regions) {
       width=7,
       device="png");
 
-    mod_full_data = fusedlasso(Y, X, D, gamma=0);
+    mod_full_data = fusedlasso(Y, X, D, gamma=gamma);
 
     results_fitted_1se[,col_ix] = as.numeric(coef(mod_full_data, lambda=exp(log_lam_1se) )$beta);
     colnames(results_fitted_1se)[col_ix] = paste0(next_region, "_freq_band_", next_freq_band);
@@ -474,9 +474,15 @@ for (rx in 1:n_regions) {
 
     png(filename=save_filename);
 
+    plot_xs = ((0:(n_blocks - 1) ) * thinning_factor) + 1;
+    mean_scaled_y = as.numeric(rowMeans(y_scaled_mat) );
+    y_lim = c(
+      min(-1, min(mean_scaled_y) ),
+      max(1, max(mean_scaled_y) ));
+
     plot(
-      (1:n_blocks) * thinning_factor,
-      as.numeric(rowMeans(y_scaled_mat) ),
+      plot_xs,
+      mean_scaled_y,
       lty=2,
       col="black",
       main=paste0(
@@ -486,15 +492,16 @@ for (rx in 1:n_regions) {
       ylab="Scaled Log-power",
       xlab="Time (seconds)",
       type="l",
-      ylim=c(-1, 1) );
+      ylim=y_lim);
 
-    lines(results_fitted_1se[[col_ix]], col="steelblue", lwd=3);
+    lines(plot_xs, results_fitted_1se[[col_ix]], col="steelblue", lwd=3);
+    abline(v=1801, col="green4", lty=6, lwd=2);
     legend(
-      0.75 * n_blocks * thinning_factor, 1,
-      legend=c("Mean Observed", "Fitted"),
-      col=c("black", "steelblue"),
-      lty=c(2, 1),
-      lwd=c(1, 3) );
+      0.65 * n_blocks * thinning_factor, 1,
+      legend=c("Mean Observed", "Fitted", "Injection"),
+      col=c("black", "steelblue", "green4"),
+      lty=c(2, 1, 6),
+      lwd=c(1, 3, 2) );
 
     dev.off();
 
@@ -518,8 +525,8 @@ for (rx in 1:n_regions) {
     png(filename=save_filename);
 
     plot(
-      (1:n_blocks) * thinning_factor,
-      as.numeric(rowMeans(y_scaled_mat) ),
+      plot_xs,
+      mean_scaled_y,
       lty=2,
       col="black",
       main=paste0(
@@ -529,15 +536,16 @@ for (rx in 1:n_regions) {
       ylab="Scaled Log-power",
       xlab="Time (seconds)",
       type="l",
-      ylim=c(-1, 1) );
+      ylim=y_lim);
 
-    lines(results_fitted_min[[col_ix]], col="steelblue", lwd=3);
+    lines(plot_xs, results_fitted_min[[col_ix]], col="steelblue", lwd=3);
+    abline(v=1801, col="green4", lty=6, lwd=2);
     legend(
-      0.75 * n_blocks * thinning_factor, 1,
-      legend=c("Mean Observed", "Fitted"),
-      col=c("black", "steelblue"),
-      lty=c(2, 1),
-      lwd=c(1, 3) );
+      0.65 * n_blocks * thinning_factor, 1,
+      legend=c("Mean Observed", "Fitted", "Injection"),
+      col=c("black", "steelblue", "green4"),
+      lty=c(2, 1, 6),
+      lwd=c(1, 3, 2) );
 
     dev.off();
   }
