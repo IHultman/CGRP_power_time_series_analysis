@@ -1,5 +1,6 @@
 library(genlasso)
 library(ggplot2)
+library(parallel)
 library(purrr)
 library(stringr)
 
@@ -158,7 +159,6 @@ results_fitted_min = as.data.frame(matrix(NA, n_blocks, n_reg_freq_combos) );
 brain_regions = unique(mean_logpower_ts_data$region);
 n_regions = length(brain_regions);
 
-col_ix = 0;
 
 fused_lasso_loocv = function(Y, X, D, log_lambdas, gamma) {
 # DESCRIPTION:
@@ -278,10 +278,12 @@ fused_lasso_loocv_par = function(Y, X, D, log_lambdas, gamma, cl) {
 
   cat(sprintf("Fitting %d leave-one-out cross-validation models ...\n", n_dim) );
 
+  clusterExport(cl, "X", "Y", "D");
+
   mods_train = parLapply(
     cl,
     as.list(1:n_dim),
-    FUN=function(gx) {
+    fun=function(gx) {
       X_train = X[trn_inds[,gx],];
       Y_train = Y[trn_inds[,gx]];
       fusedlasso(Y_train, X_train, D, gamma=gamma)
@@ -331,6 +333,8 @@ fused_lasso_loocv_par = function(Y, X, D, log_lambdas, gamma, cl) {
 };
 
 
+col_ix = 0;
+
 for (rx in 1:n_regions) {
   next_region = brain_regions[rx];
   next_region_ixs = mean_logpower_ts_data$region == next_region;
@@ -360,7 +364,14 @@ for (rx in 1:n_regions) {
     Y = as.vector(y_scaled_mat);
 
     gamma = 0;
+
+    start_time = Sys.time();
     loocv_results = fused_lasso_loocv(Y, X, D, NA, gamma);
+    run_time = difftime(Sys.time(), start_time, units="secs")[[1]];
+
+    start_time = Sys.time();
+    loocv_par_results = fused_lasso_loocv_par(Y, X, D, NA, gamma, cl);
+    run_time = difftime(Sys.time(), start_time, units="secs")[[1]];
 
     min_tst_mse = min(loocv_results$mean_mse);
     min_mse_ix = max(which(loocv_results$mean_mse == min_tst_mse) );
