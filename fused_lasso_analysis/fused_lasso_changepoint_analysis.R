@@ -15,8 +15,9 @@ mean_logpower_ts_filename = paste0(
   "/power_time_series_analysis",
   "/CGRP_power_time_series_analysis",
   "/fused_lasso_analysis/",
-  "/fused_lasso_data",
-  "/combined_mean_logpower_ts.csv");
+  "/power_changepoint_analysis",
+  "/fused_lasso_data240323",
+  "/mean_logpower_time_series_results_postinjcut_Day1_fused_lasso_analysis.csv");
 
 #################################################################################
 ## Change this to the path of the directory where the results of this analysis ##
@@ -28,10 +29,13 @@ save_dir = paste0(
   "/power_time_series_analysis",
   "/CGRP_power_time_series_analysis",
   "/fused_lasso_analysis",
-  "/fused_lasso_results/");
+  "/power_changepoint_analysis",
+  "/fused_lasso_results240403",
+  "/Day1_results",
+  "/baseline/");
 
 if (!dir.exists(save_dir) ) {
-  dir.create(save_dir);
+  dir.create(save_dir, recursive=TRUE);
 
   stopifnot(dir.exists(save_dir) );
 }
@@ -92,9 +96,19 @@ stopifnot(length(nonpow_col_ixs) == length(expected_nonpow_colnames) );
 nonpower_info = mean_logpower_ts_data[,nonpow_col_ixs];
 n_obs = nrow(nonpower_info);
 
-power_col_ixs = sort(setdiff(1:ncol(mean_logpower_ts_data), nonpow_col_ixs) );
+segment_range_ixs = c(1, 1801);
+#segment_range_ixs = c(1802, 7204);
+
+power_col_ixs = sort(
+  setdiff(
+    1:ncol(mean_logpower_ts_data),
+    nonpow_col_ixs) )[segment_range_ixs[1]:segment_range_ixs[2]];
+
+mean_logpower_ts_data = mean_logpower_ts_data[,c(nonpow_col_ixs, power_col_ixs)];
+power_col_ixs = (length(nonpow_col_ixs) + 1):ncol(mean_logpower_ts_data);
+
 logpower_mat_init = as.matrix(mean_logpower_ts_data[,power_col_ixs]);
-thinning_factor = 16;
+thinning_factor = 15;
 
 n_blocks = ceiling(length(power_col_ixs) / thinning_factor);
 block_sizes = rep(thinning_factor, n_blocks)
@@ -115,7 +129,12 @@ logpower_mat = matrix(NA, n_obs, n_blocks);
 for (bx in 1:n_blocks) {
   col_ax = block_ixs_table[1,bx];
   col_bx = block_ixs_table[2,bx];
-  logpower_mat[,bx] = rowMeans(logpower_mat_init[,col_ax:col_bx], na.rm=TRUE);
+
+  if (block_sizes[bx] > 1) {
+    logpower_mat[,bx] = rowMeans(logpower_mat_init[,col_ax:col_bx], na.rm=TRUE);
+  } else {
+    logpower_mat[,bx] = logpower_mat_init[,col_ax];
+  }
 }
 
 mean_logpower_ts_data = cbind(nonpower_info, logpower_mat);
@@ -152,12 +171,18 @@ bg_color = rgb(245, 245, 245, maxColorValue=255);
 n_reg_freq_combos = nrow(unique(mean_logpower_ts_data[,c("region", "freq_band")]) );
 
 # The fitted values at each frequency for each pair of brain regions will
-# be stored in the following table and saved to a CSV file.
+# be stored in the following tables and saved to a CSV file.
 results_fitted_1se = as.data.frame(matrix(NA, n_blocks, n_reg_freq_combos) );
 results_fitted_min = as.data.frame(matrix(NA, n_blocks, n_reg_freq_combos) );
 
+# The mean observed values at each frequency for each pair of brain regions will
+# be stored in the following table and saved to a CSV file.
+results_mean_observed = as.data.frame(matrix(NA, n_blocks, n_reg_freq_combos) );
+
 brain_regions = unique(mean_logpower_ts_data$region);
 n_regions = length(brain_regions);
+
+col_ix = 0;
 
 
 fused_lasso_loocv = function(Y, X, D, log_lambdas, gamma) {
@@ -240,11 +265,13 @@ fused_lasso_loocv = function(Y, X, D, log_lambdas, gamma) {
   loocv_results$mean_mse = rowMeans(all_mse);
   loocv_results$sd_mse = apply(all_mse, 1, sd);
 
-  loocv_results
+  list(
+    loocv_results=loocv_results,
+    mods_train=mods_train);
 };
 
 
-fused_lasso_loocv_par = function(Y, X, D, log_lambdas, gamma, cl) {
+fused_lasso_loocv_par = function(Y, X, D, log_lambdas, gamma, n_proc) {
 # DESCRIPTION:
 #   Leave-one-out cross-validation for fused lasso.
 #
@@ -278,16 +305,20 @@ fused_lasso_loocv_par = function(Y, X, D, log_lambdas, gamma, cl) {
 
   cat(sprintf("Fitting %d leave-one-out cross-validation models ...\n", n_dim) );
 
-  clusterExport(cl, "X", "Y", "D");
+  cl_obj = makeCluster(min(n_proc, n_dim) );
+  cl_lib_info = clusterEvalQ(cl_obj, library(genlasso) );
+  clusterExport(cl_obj, c("X", "Y", "D", "gamma", "trn_inds"), environment() );
 
   mods_train = parLapply(
-    cl,
+    cl_obj,
     as.list(1:n_dim),
-    fun=function(gx) {
+    function(gx) {
       X_train = X[trn_inds[,gx],];
       Y_train = Y[trn_inds[,gx]];
       fusedlasso(Y_train, X_train, D, gamma=gamma)
     });
+
+  stopCluster(cl_obj);
 
   if (any(is.na(log_lambdas) )) {
     n_lambdas = 100;
@@ -329,11 +360,11 @@ fused_lasso_loocv_par = function(Y, X, D, log_lambdas, gamma, cl) {
   loocv_results$mean_mse = rowMeans(all_mse);
   loocv_results$sd_mse = apply(all_mse, 1, sd);
 
-  loocv_results
+  list(
+    loocv_results=loocv_results,
+    mods_train=mods_train);
 };
 
-
-col_ix = 0;
 
 for (rx in 1:n_regions) {
   next_region = brain_regions[rx];
@@ -360,18 +391,16 @@ for (rx in 1:n_regions) {
     X = diag(n_blocks);
     X = t(matrix(rep(X, n_mice), n_blocks) );
 
-    y_scaled_mat = scale(t(as.matrix(next_reg_freq_data[,power_col_ixs]) ));
-    Y = as.vector(y_scaled_mat);
+    #y_scaled_mat = scale(t(as.matrix(next_reg_freq_data[,power_col_ixs]) ));
+    # Y = as.vector(y_scaled_mat);
+
+    Y = as.vector(t(as.matrix(next_reg_freq_data[,power_col_ixs]) ));
 
     gamma = 0;
+    loocv_results = fused_lasso_loocv_par(Y, X, D, NA, gamma, n_mice);
 
-    start_time = Sys.time();
-    loocv_results = fused_lasso_loocv(Y, X, D, NA, gamma);
-    run_time = difftime(Sys.time(), start_time, units="secs")[[1]];
-
-    start_time = Sys.time();
-    loocv_par_results = fused_lasso_loocv_par(Y, X, D, NA, gamma, cl);
-    run_time = difftime(Sys.time(), start_time, units="secs")[[1]];
+    mods_train = loocv_results$mods_train;
+    loocv_results = loocv_results$loocv_results;
 
     min_tst_mse = min(loocv_results$mean_mse);
     min_mse_ix = max(which(loocv_results$mean_mse == min_tst_mse) );
@@ -466,6 +495,9 @@ for (rx in 1:n_regions) {
     results_fitted_min[,col_ix] = as.numeric(coef(mod_full_data, lambda=exp(log_lam_min) )$beta);
     colnames(results_fitted_min)[col_ix] = paste0(next_region, "_freq_band_", next_freq_band);
 
+    results_mean_observed[,col_ix] = as.numeric(colMeans(as.matrix(next_reg_freq_data[,power_col_ixs]) ));
+    colnames(results_mean_observed)[col_ix] = paste0(next_region, "_freq_band_", next_freq_band);
+
     save_filename = sprintf(
       "fused_lasso_lambda_1se_power_%s_freq_band_%d.png",
       next_region,
@@ -486,33 +518,51 @@ for (rx in 1:n_regions) {
     png(filename=save_filename);
 
     plot_xs = ((0:(n_blocks - 1) ) * thinning_factor) + 1;
-    mean_scaled_y = as.numeric(rowMeans(y_scaled_mat) );
-    y_lim = c(
-      min(-1, min(mean_scaled_y) ),
-      max(1, max(mean_scaled_y) ));
+
+    #mean_y = as.numeric(rowMeans(y_scaled_mat) );
+
+    mean_y = results_mean_observed[,col_ix];
+
+    #y_lim = c(
+    #  min(-1, min(mean_y) ),
+    #  max(1, max(mean_y) ));
+
+    y_lim = c(min(mean_y), max(mean_y) );
+    y_lim_range = diff(y_lim);
+    y_scale_inc = 0.2;
+    y_inc = y_lim_range * y_scale_inc;
+    y_lim = y_lim + ((0.5 * y_inc) * c(-1, 1) );
 
     plot(
       plot_xs,
-      mean_scaled_y,
+      mean_y,
       lty=2,
       col="black",
       main=paste0(
         next_region,
         " - frequency band ",
         next_freq_band),
-      ylab="Scaled Log-power",
+      ylab="Log-power",
       xlab="Time (seconds)",
       type="l",
       ylim=y_lim);
 
     lines(plot_xs, results_fitted_1se[[col_ix]], col="steelblue", lwd=3);
-    abline(v=1801, col="green4", lty=6, lwd=2);
+
+    #abline(v=1801, col="green4", lty=6, lwd=2);
+    #legend(
+    #  0.65 * n_blocks * thinning_factor, y_lim[2],
+    # legend=c("Mean Observed", "Fitted", "Injection"),
+    #  col=c("black", "steelblue", "green4"),
+    #  lty=c(2, 1, 6),
+    #  lwd=c(1, 3, 2) );
+
     legend(
-      0.65 * n_blocks * thinning_factor, 1,
-      legend=c("Mean Observed", "Fitted", "Injection"),
-      col=c("black", "steelblue", "green4"),
-      lty=c(2, 1, 6),
-      lwd=c(1, 3, 2) );
+      0.65 * n_blocks * thinning_factor, y_lim[2],
+      legend=c("Mean Observed", "Fitted"),
+      col=c("black", "steelblue"),
+      lty=c(2, 1),
+      lwd=c(1, 3) );
 
     dev.off();
 
@@ -537,26 +587,34 @@ for (rx in 1:n_regions) {
 
     plot(
       plot_xs,
-      mean_scaled_y,
+      mean_y,
       lty=2,
       col="black",
       main=paste0(
         next_region,
         " - frequency band ",
         next_freq_band),
-      ylab="Scaled Log-power",
+      ylab="Log-power",
       xlab="Time (seconds)",
       type="l",
       ylim=y_lim);
 
     lines(plot_xs, results_fitted_min[[col_ix]], col="steelblue", lwd=3);
-    abline(v=1801, col="green4", lty=6, lwd=2);
+
+    #abline(v=1801, col="green4", lty=6, lwd=2);
+    #legend(
+    #  0.65 * n_blocks * thinning_factor, y_lim[2],
+    #  legend=c("Mean Observed", "Fitted", "Injection"),
+    #  col=c("black", "steelblue", "green4"),
+    #  lty=c(2, 1, 6),
+    #  lwd=c(1, 3, 2) );
+
     legend(
-      0.65 * n_blocks * thinning_factor, 1,
-      legend=c("Mean Observed", "Fitted", "Injection"),
-      col=c("black", "steelblue", "green4"),
-      lty=c(2, 1, 6),
-      lwd=c(1, 3, 2) );
+      0.65 * n_blocks * thinning_factor, y_lim[2],
+      legend=c("Mean Observed", "Fitted"),
+      col=c("black", "steelblue"),
+      lty=c(2, 1),
+      lwd=c(1, 3) );
 
     dev.off();
   }
@@ -582,3 +640,28 @@ write.table(
   sep=", ",
   row.names=FALSE);
 
+save_filename = paste0(
+  save_dir,
+  "mean_observed_values.csv");
+
+write.table(
+  results_mean_observed,
+  save_filename,
+  sep=", ",
+  row.names=FALSE);
+
+
+
+
+#vars_to_compare = c("lambda", "beta", "fit", "u", "hit", "df", "y", "X");
+#n_vars_to_compare = length(vars_to_compare);
+
+#for (gx in 1:34) {
+#  for (vx in 1:n_vars_to_compare) {
+#    next_var = vars_to_compare[vx];
+#    stopifnot(
+#      all(
+#        loocv_results$mods_train[[gx]][[next_var]] ==
+#        loocv_results_par$mods_train[[gx]][[next_var]]) );
+#  }
+#}
