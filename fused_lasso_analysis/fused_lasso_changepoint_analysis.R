@@ -170,10 +170,15 @@ bg_color = rgb(245, 245, 245, maxColorValue=255);
 
 n_reg_freq_combos = nrow(unique(mean_logpower_ts_data[,c("region", "freq_band")]) );
 
-# The fitted values at each frequency for each pair of brain regions will
+# The mean fitted values at each frequency for each pair of brain regions will
 # be stored in the following tables and saved to a CSV file.
-results_fitted_1se = as.data.frame(matrix(NA, n_blocks, n_reg_freq_combos) );
-results_fitted_min = as.data.frame(matrix(NA, n_blocks, n_reg_freq_combos) );
+results_mean_fitted_1se = as.data.frame(matrix(NA, n_blocks, n_reg_freq_combos) );
+results_mean_fitted_min = as.data.frame(matrix(NA, n_blocks, n_reg_freq_combos) );
+
+# The standard deviation of fitted values at each frequency for each pair of brain
+# regions will be stored in the following tables and saved to a CSV file.
+results_sd_fitted_1se = as.data.frame(matrix(NA, n_blocks, n_reg_freq_combos) );
+results_sd_fitted_min = as.data.frame(matrix(NA, n_blocks, n_reg_freq_combos) );
 
 # The mean observed values at each frequency for each pair of brain regions will
 # be stored in the following table and saved to a CSV file.
@@ -487,16 +492,44 @@ for (rx in 1:n_regions) {
       width=7,
       device="png");
 
-    mod_full_data = fusedlasso(Y, X, D, gamma=gamma);
+    #mod_full_data = fusedlasso(Y, X, D, gamma=gamma);
 
-    results_fitted_1se[,col_ix] = as.numeric(coef(mod_full_data, lambda=exp(log_lam_1se) )$beta);
-    colnames(results_fitted_1se)[col_ix] = paste0(next_region, "_freq_band_", next_freq_band);
+    results_colname = paste0(next_region, "_freq_band_", next_freq_band);
 
-    results_fitted_min[,col_ix] = as.numeric(coef(mod_full_data, lambda=exp(log_lam_min) )$beta);
-    colnames(results_fitted_min)[col_ix] = paste0(next_region, "_freq_band_", next_freq_band);
+    mods_train_fitted_1se = matrix(
+      unlist(
+        lapply(
+          mods_train,
+          function(next_mod_trn) as.numeric(coef(next_mod_trn, lambda=exp(log_lam_1se) )$beta) )),
+      ncol=n_mice);
+
+    results_mean_fitted_1se[,col_ix] = rowMeans(mods_train_fitted_1se);
+    colnames(results_mean_fitted_1se)[col_ix] = results_colname;
+
+    results_sd_fitted_1se[,col_ix] = apply(mods_train_fitted_1se, 1, sd);
+    colnames(results_sd_fitted_1se)[col_ix] = results_colname;
+
+    mods_train_fitted_min = matrix(
+      unlist(
+        lapply(
+          mods_train,
+          function(next_mod_trn) as.numeric(coef(next_mod_trn, lambda=exp(log_lam_min) )$beta) )),
+      ncol=n_mice);
+
+    results_mean_fitted_min[,col_ix] = rowMeans(mods_train_fitted_min);
+    colnames(results_mean_fitted_min)[col_ix] = results_colname;
+
+    results_sd_fitted_min[,col_ix] = apply(mods_train_fitted_min, 1, sd);
+    colnames(results_sd_fitted_min)[col_ix] = results_colname;
+
+    #results_mean_fitted_1se[,col_ix] = as.numeric(coef(mod_full_data, lambda=exp(log_lam_1se) )$beta);
+    #colnames(results_mean_fitted_1se)[col_ix] = results_colname;
+
+    #results_mean_fitted_min[,col_ix] = as.numeric(coef(mod_full_data, lambda=exp(log_lam_min) )$beta);
+    #colnames(results_mean_fitted_min)[col_ix] = results_colname;
 
     results_mean_observed[,col_ix] = as.numeric(colMeans(as.matrix(next_reg_freq_data[,power_col_ixs]) ));
-    colnames(results_mean_observed)[col_ix] = paste0(next_region, "_freq_band_", next_freq_band);
+    colnames(results_mean_observed)[col_ix] = results_colname;
 
     save_filename = sprintf(
       "fused_lasso_lambda_1se_power_%s_freq_band_%d.png",
@@ -547,7 +580,7 @@ for (rx in 1:n_regions) {
       type="l",
       ylim=y_lim);
 
-    lines(plot_xs, results_fitted_1se[[col_ix]], col="steelblue", lwd=3);
+    lines(plot_xs, results_mean_fitted_1se[[col_ix]], col="steelblue", lwd=3);
 
     #abline(v=1801, col="green4", lty=6, lwd=2);
     #legend(
@@ -599,7 +632,7 @@ for (rx in 1:n_regions) {
       type="l",
       ylim=y_lim);
 
-    lines(plot_xs, results_fitted_min[[col_ix]], col="steelblue", lwd=3);
+    lines(plot_xs, results_mean_fitted_min[[col_ix]], col="steelblue", lwd=3);
 
     #abline(v=1801, col="green4", lty=6, lwd=2);
     #legend(
@@ -625,7 +658,7 @@ save_filename = paste0(
   "fitted_values_lambda_1se.csv");
 
 write.table(
-  results_fitted_1se,
+  results_mean_fitted_1se,
   save_filename,
   sep=", ",
   row.names=FALSE);
@@ -635,7 +668,7 @@ save_filename = paste0(
   "fitted_values_lambda_min.csv");
 
 write.table(
-  results_fitted_min,
+  results_mean_fitted_min,
   save_filename,
   sep=", ",
   row.names=FALSE);
