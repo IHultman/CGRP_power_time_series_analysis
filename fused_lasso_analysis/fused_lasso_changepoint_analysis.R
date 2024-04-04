@@ -17,7 +17,7 @@ mean_logpower_ts_filename = paste0(
   "/fused_lasso_analysis/",
   "/power_changepoint_analysis",
   "/fused_lasso_data240323",
-  "/mean_logpower_time_series_results_postinjcut_Day1_fused_lasso_analysis.csv");
+  "/mean_logpower_time_series_results_postinjcut_Day2_fused_lasso_analysis.csv");
 
 #################################################################################
 ## Change this to the path of the directory where the results of this analysis ##
@@ -30,9 +30,9 @@ save_dir = paste0(
   "/CGRP_power_time_series_analysis",
   "/fused_lasso_analysis",
   "/power_changepoint_analysis",
-  "/fused_lasso_results240403",
-  "/Day1_results",
-  "/baseline/");
+  "/fused_lasso_results240404",
+  "/Day2_results",
+  "/post_injection/");
 
 if (!dir.exists(save_dir) ) {
   dir.create(save_dir, recursive=TRUE);
@@ -96,8 +96,8 @@ stopifnot(length(nonpow_col_ixs) == length(expected_nonpow_colnames) );
 nonpower_info = mean_logpower_ts_data[,nonpow_col_ixs];
 n_obs = nrow(nonpower_info);
 
-segment_range_ixs = c(1, 1801);
-#segment_range_ixs = c(1802, 7204);
+#segment_range_ixs = c(1, 1801);
+segment_range_ixs = c(1802, 7204);
 
 power_col_ixs = sort(
   setdiff(
@@ -655,7 +655,7 @@ for (rx in 1:n_regions) {
 
 save_filename = paste0(
   save_dir,
-  "fitted_values_lambda_1se.csv");
+  "mean_fitted_values_lambda_1se.csv");
 
 write.table(
   results_mean_fitted_1se,
@@ -665,10 +665,30 @@ write.table(
 
 save_filename = paste0(
   save_dir,
-  "fitted_values_lambda_min.csv");
+  "sd_fitted_values_lambda_1se.csv");
+
+write.table(
+  results_sd_fitted_1se,
+  save_filename,
+  sep=", ",
+  row.names=FALSE);
+
+save_filename = paste0(
+  save_dir,
+  "mean_fitted_values_lambda_min.csv");
 
 write.table(
   results_mean_fitted_min,
+  save_filename,
+  sep=", ",
+  row.names=FALSE);
+
+save_filename = paste0(
+  save_dir,
+  "sd_fitted_values_lambda_min.csv");
+
+write.table(
+  results_sd_fitted_min,
   save_filename,
   sep=", ",
   row.names=FALSE);
