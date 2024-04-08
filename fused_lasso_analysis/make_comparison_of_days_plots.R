@@ -11,6 +11,16 @@ fused_lasso_results_dir = paste0(
   "/fused_lasso_analysis",
   "/fused_lasso_results240404");
 
+plots_save_dir = paste0(
+  "/home",
+  "/ikhultman",
+  "/Desktop",
+  "/power_time_series_analysis",
+  "/CGRP_power_time_series_analysis",
+  "/fused_lasso_analysis",
+  "/fused_lasso_results240404",
+  "/comparison_of_days_plots");
+
 day_info_df = data.frame(
   label=c("Day_1", "Day_2", "Day_3"),
   dir=c("/Day1_results", "/Day2_results", "/Day3_results"),
@@ -118,6 +128,13 @@ bg_color = rgb(245, 245, 245, maxColorValue=255);
 
 for (lx in 1:n_lambdas) {
   next_lam_label = lambda_info_df$label[lx];
+  lam_save_dir = paste0(plots_save_dir, "/", next_lam_label);
+
+  if (!dir.exists(lam_save_dir) ) {
+    dir.create(lam_save_dir, recursive=TRUE);
+
+    stopifnot(dir.exists(lam_save_dir) );
+  }
 
   for (rf_ix in 1:n_rf_vars) {
     next_rf_var = reg_freq_vars[rf_ix];
@@ -130,7 +147,7 @@ for (lx in 1:n_lambdas) {
       next_day_label = day_info_df$label[dx];
 
       next_plot_df = plot_dfs[[next_day_label]][[next_lam_label]][[next_rf_var]];
-      next_plot_df$x = ((0:(nrow(next_day_df) - 1) ) * thinning_factor) + 1;
+      next_plot_df$x = ((0:(nrow(next_plot_df) - 1) ) * thinning_factor) + 1;
       next_plot_df$legend_line_label = paste0(
         str_replace_all(next_day_label, "_", " "),
         " mean fitted");
@@ -152,36 +169,39 @@ for (lx in 1:n_lambdas) {
             y=.data[[paste0(next_day_label, "_mean")]],
             ymin=.data[[paste0(next_day_label, "_min")]],
             ymax=.data[[paste0(next_day_label, "_max")]],
-            colour=legend_line_label,
-            fill="blue"),
+            fill=legend_line_label),
           alpha=0.2,
           show.legend=FALSE) );
     }
 
     next_comparison_plot = (
       next_comparison_plot +
+      geom_vline(
+        aes(
+          xintercept=1801,
+          colour="Injection"),
+        linetype="solid",
+        linewidth=0.7,
+        show.legend=FALSE) +
       scale_colour_manual(
-        values=c(day_info_df$plot_color),
+        values=c(day_info_df$plot_color, "green4"),
         guide=guide_legend(
           title="Legend",
           override.aes=list(
-              fill=c(bg_color, bg_color, bg_color),
-            linetype=c(day_info_df$plot_lty),
-            linewidth=c(0.7, 0.7, 0.7) ))) +
+            fill=c(bg_color, bg_color, bg_color, bg_color),
+            linetype=c(day_info_df$plot_lty, "solid"),
+            linewidth=c(0.7, 0.7, 0.7, 0.7) ))) +
+      scale_fill_manual(values=day_info_df$plot_color) +
       labs(
         x="Time (s)",
-        y="Fitted Power") );
+        y="Fitted Power",
+        title=str_replace_all(next_rf_var, "_", " ") ));
 
-    save_filename = paste0(
-      figures_lam_choice_dir,
-      sprintf(
-        "lambda_choice_power_%s_freq_band_%d.png",
-        next_region,
-        next_freq_band) );
+    save_filename = paste0(lam_save_dir, "/", next_rf_var, ".png");
 
     ggsave(
       save_filename,
-      next_mse_results_plot,
+      next_comparison_plot,
       units="in",
       height=7,
       width=7,
@@ -191,16 +211,16 @@ for (lx in 1:n_lambdas) {
 
 
 
-next_lam_label = "lam_1se";
-next_rf_var = "Acc_freq_band_1";
+#next_lam_label = "lam_1se";
+#next_rf_var = "Acc_freq_band_2";
 
-plot(plot_dfs[[1]][[next_lam_label]][[next_rf_var]]$Day_1_mean, type='l', ylim=c(28, 32) );
-lines(plot_dfs[[1]][[next_lam_label]][[next_rf_var]]$Day_1_min);
-lines(plot_dfs[[1]][[next_lam_label]][[next_rf_var]]$Day_1_max);
-lines(plot_dfs[[2]][[next_lam_label]][[next_rf_var]]$Day_2_mean, col="steelblue");
-lines(plot_dfs[[2]][[next_lam_label]][[next_rf_var]]$Day_2_min, col="steelblue");
-lines(plot_dfs[[2]][[next_lam_label]][[next_rf_var]]$Day_2_max, col="steelblue");
-lines(plot_dfs[[3]][[next_lam_label]][[next_rf_var]]$Day_3_mean, col="green");
-lines(plot_dfs[[3]][[next_lam_label]][[next_rf_var]]$Day_3_min, col="green");
-lines(plot_dfs[[3]][[next_lam_label]][[next_rf_var]]$Day_3_max, col="green");
-abline(v=121);
+#plot(plot_dfs[[1]][[next_lam_label]][[next_rf_var]]$Day_1_mean, type='l', ylim=c(28, 32) );
+#lines(plot_dfs[[1]][[next_lam_label]][[next_rf_var]]$Day_1_min);
+#lines(plot_dfs[[1]][[next_lam_label]][[next_rf_var]]$Day_1_max);
+#lines(plot_dfs[[2]][[next_lam_label]][[next_rf_var]]$Day_2_mean, col="steelblue");
+#lines(plot_dfs[[2]][[next_lam_label]][[next_rf_var]]$Day_2_min, col="steelblue");
+#lines(plot_dfs[[2]][[next_lam_label]][[next_rf_var]]$Day_2_max, col="steelblue");
+#lines(plot_dfs[[3]][[next_lam_label]][[next_rf_var]]$Day_3_mean, col="green");
+#lines(plot_dfs[[3]][[next_lam_label]][[next_rf_var]]$Day_3_min, col="green");
+#lines(plot_dfs[[3]][[next_lam_label]][[next_rf_var]]$Day_3_max, col="green");
+#abline(v=121);
